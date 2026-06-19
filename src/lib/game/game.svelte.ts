@@ -3,9 +3,9 @@ import type { AudioEngine } from '$lib/audio/AudioEngine'
 import { saveHighScore } from '$lib/storage/db'
 
 const CONFIG: GameConfig = {
-  scrollSpeed: 360,
+  scrollSpeed: 280,
   hitZoneY: 0.82,
-  hitWindow: 0.2,
+  hitWindow: 0.25,
   lanes: 4,
 }
 
@@ -18,6 +18,7 @@ export class GameEngine {
   currentSong = $state<SongData | null>(null)
 
   tiles: Tile[] = []
+  countdownStep = $state(3)
   private config: GameConfig
   private animFrameId: number | null = null
   private lastTime: number = 0
@@ -28,6 +29,10 @@ export class GameEngine {
   private canvasHeight: number = 0
   private animTime: number = 0
   private audio: AudioEngine | null = null
+  private countdownTimer: number = 0
+  private countdownToPlaying: boolean = false
+  private countdownClicks: number = 0
+  private goTime: number = 0
 
   constructor() {
     this.config = { ...CONFIG }
@@ -58,7 +63,12 @@ export class GameEngine {
     this.animTime = 0
     this.currentSong = song ?? null
     this.tiles = song ? this.songToTiles(song) : this.generateLevel()
-    this.phase = 'playing'
+    this.countdownStep = 3
+    this.countdownTimer = 0
+    this.countdownToPlaying = false
+    this.countdownClicks = 0
+    this.goTime = 0
+    this.phase = 'countdown'
     this.lastTime = performance.now()
 
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId)
@@ -159,8 +169,8 @@ export class GameEngine {
       }
       lastLane = lane
 
-      const gap = 0.25 + Math.random() * 0.35 - (i / 100)
-      time += Math.max(gap, 0.12)
+      const gap = 0.3 + Math.random() * 0.4 - (i / 150)
+      time += Math.max(gap, 0.22)
 
       tiles.push(this.createTile(lane, time, 0.2))
     }
@@ -219,7 +229,9 @@ export class GameEngine {
       const dt = Math.min(rawDt, 0.05)
       this.animTime += dt
 
-      if (this.phase === 'playing') {
+      if (this.phase === 'countdown') {
+        this.updateCountdown(dt)
+      } else if (this.phase === 'playing') {
         this.update(dt)
       }
       this.render()
@@ -256,6 +268,39 @@ export class GameEngine {
     }
   }
 
+  private updateCountdown(dt: number) {
+    this.countdownTimer += dt
+
+    if (this.countdownStep > 0) {
+      const stepDur = 0.8
+      if (this.countdownTimer >= stepDur * (4 - this.countdownStep)) {
+        if (this.countdownClicks < 4 - this.countdownStep) {
+          this.playMetronomeClick()
+          this.countdownClicks++
+        }
+        this.countdownStep = Math.max(0, 3 - Math.floor(this.countdownTimer / stepDur))
+      }
+    }
+
+    if (this.countdownStep <= 0 && !this.countdownToPlaying) {
+      this.countdownToPlaying = true
+      this.goTime = this.countdownTimer
+      this.countdownStep = 0
+    }
+
+    if (this.countdownToPlaying && this.countdownTimer - this.goTime > 0.6) {
+      const firstTile = this.tiles[0]
+      const hitZoneY = this.canvasHeight * this.config.hitZoneY
+      const firstTileTime = firstTile ? firstTile.time : 0
+      this.elapsed = firstTileTime - (hitZoneY + 60) / this.config.scrollSpeed
+      this.phase = 'playing'
+    }
+  }
+
+  private playMetronomeClick() {
+    this.audio?.playMetronome()
+  }
+
   private render() {
     if (!this.ctx) return
     const ctx = this.ctx
@@ -271,7 +316,9 @@ export class GameEngine {
     this.drawTiles(ctx, hitZoneY)
     this.drawHUD(ctx, this.canvasWidth)
 
-    if (this.phase === 'gameover') {
+    if (this.phase === 'countdown') {
+      this.drawCountdown(ctx)
+    } else if (this.phase === 'gameover') {
       this.drawGameOver(ctx)
     }
   }
@@ -387,6 +434,44 @@ export class GameEngine {
       ctx.font = 'bold 14px system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText(this.lastJudgment.toUpperCase(), w / 2, 36)
+    }
+  }
+
+  private drawCountdown(ctx: CanvasRenderingContext2D) {
+    const pulse = Math.sin(this.animTime * 6) * 0.15 + 0.65
+
+    ctx.fillStyle = '#0d0d1a'
+    ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight)
+
+    const cx = this.canvasWidth / 2
+    const cy = this.canvasHeight / 2
+
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    if (this.countdownStep > 0) {
+      ctx.globalAlpha = pulse
+      ctx.fillStyle = '#fff'
+      ctx.font = 'bold 72px system-ui, sans-serif'
+      ctx.fillText(String(this.countdownStep), cx, cy - 20)
+
+      ctx.globalAlpha = 1
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'
+      ctx.font = '14px system-ui, sans-serif'
+      ctx.fillText('Ready...', cx, cy + 50)
+    } else {
+      ctx.fillStyle = '#667eea'
+      ctx.font = 'bold 48px system-ui, sans-serif'
+      const fade = Math.max(0, 1 - (this.countdownTimer - this.goTime) / 0.6)
+      ctx.globalAlpha = fade * 0.6 + 0.4
+      ctx.fillText('Go!', cx, cy - 10)
+      ctx.globalAlpha = 1
+    }
+
+    if (this.currentSong) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'
+      ctx.font = '15px system-ui, sans-serif'
+      ctx.fillText(this.currentSong.title, cx, cy + 90)
     }
   }
 

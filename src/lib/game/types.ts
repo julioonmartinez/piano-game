@@ -31,7 +31,7 @@ export interface SongData {
 }
 
 export type Judgment = 'perfect' | 'good' | 'bad' | 'miss'
-export type Phase = 'menu' | 'songselect' | 'playing' | 'gameover'
+export type Phase = 'menu' | 'songselect' | 'countdown' | 'playing' | 'gameover'
 
 export interface GameConfig {
   scrollSpeed: number

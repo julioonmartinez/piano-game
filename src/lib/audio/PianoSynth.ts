@@ -196,6 +196,21 @@ export class PianoSynth {
     }
   }
 
+  playMetronome(): void {
+    if (!this.ctx || !this.masterGain) return
+    const t = this.ctx.currentTime
+    const osc = this.ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.value = 1200
+    const g = this.ctx.createGain()
+    g.gain.setValueAtTime(0.07, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
+    osc.connect(g)
+    g.connect(this.masterGain)
+    osc.start(t)
+    osc.stop(t + 0.07)
+  }
+
   destroy(): void {
     if (this.ctx) {
       this.ctx.close()

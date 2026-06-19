@@ -53,6 +53,10 @@ export class AudioEngine {
     return 60 + lane * 2
   }
 
+  playMetronome(): void {
+    this.synth?.playMetronome()
+  }
+
   destroy(): void {
     this.synth?.destroy()
     this.synth = null
